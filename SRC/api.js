@@ -4,9 +4,9 @@
     angular.module('common.utils')
         .service('Api', Api);
 
-    Api.$inject = ['$http', '$httpParamSerializer', '$log', 'Loading', 'Cache', 'Notification', 'endpoints', 'JsonParseService', 'configsConstants', '$state']
+    Api.$inject = ['$http', '$httpParamSerializer', '$log', 'Loading', 'Cache', 'Notification', 'endpoints', 'JsonParseService', 'configsConstants', '$state', 'compatibilityConstants', 'Uri']
 
-    function Api($http, $httpParamSerializer, $log, Loading, Cache, Notification, endpoints, JsonParseService, configsConstants, $state) {
+    function Api($http, $httpParamSerializer, $log, Loading, Cache, Notification, endpoints, JsonParseService, configsConstants, $state, compatibilityConstants, Uri) {
 
         var init = function (o) {
 
@@ -18,28 +18,30 @@
                 IsPaginate: true,
                 QueryOptimizerBehavior: "",
             };
+            this.Filter = {};
 
             this.EnableLoading = true;
             this.EnableErrorMessage = true;
             this.EnableLogs = true;
-            this.Filter = {};
             this.Data = {};
             this.Cache = false;
             this.LastAction = "none";
             this.Url = "";
+            this.UriResource = Uri.resource(o);
 
             this.SuccessHandle = function (data) { return data; };
             this.ErrorHandle = function (err) { return err; };
 
             this.Get = _get;
-            this.GetDetails = _getDetails;
             this.Post = _post;
             this.Put = _put;
             this.Delete = _delete;
+
+            this.GetDetails = _getDetails;
             this.DataItem = _dataitem;
             this.GetDataListCustom = _getDataListCustom;
             this.GetDataCustom = _getDataCustom;
-            this.GetMethodCustom = _getMethodCustom;
+            this.GetMoreResource = _getMoreResource;
 
             var self = this;
 
@@ -48,7 +50,10 @@
                 ShowLoading();
 
                 self.LastAction = "post";
-                self.Url = makeUri();
+                self.UriResource.setEndPoint(this.EndPoint)
+                self.Url = self.UriResource.makeUri();
+
+                console.log(self.Data);
 
                 return $http
                     .post(self.Url, self.Data)
@@ -60,7 +65,10 @@
                 ShowLoading();
 
                 self.LastAction = "put";
-                self.Url = makeUri();
+                self.UriResource.setEndPoint(self.EndPoint)
+                self.Url = self.UriResource.makeUri();
+
+                console.log("Put API", self.Data);
 
                 return $http
                     .put(self.Url, self.Data)
@@ -72,6 +80,7 @@
                 ShowLoading();
 
                 self.LastAction = "delete";
+                self.UriResource.setEndPoint(self.EndPoint)
                 self.Url = makeDeleteBaseUrl();
 
                 return $http
@@ -84,7 +93,8 @@
                 ShowLoading();
 
                 self.LastAction = "get";
-                self.Url = makeGetBaseUrl();
+                self.UriResource.setEndPoint(self.EndPoint)
+                self.Url = self.UriResource.makeGetBaseUrl(self.Filter);
 
                 if (isOffline())
                     return LoadFromCache();
@@ -95,27 +105,32 @@
             }
 
             function _getDataListCustom() {
-                return _getMethodCustom("GetDataListCustom");
+                return _getMoreResource("GetDataListCustom");
             }
 
             function _getDetails() {
-                return _getMethodCustom("GetDetails");
+                return _getMoreResource("GetDetails");
             }
 
             function _getDataCustom() {
-                return _getMethodCustom("GetDataCustom");
+                return _getMoreResource("GetDataCustom");
             }
 
             function _dataitem() {
-                return _getMethodCustom("GetDataItem");
+                return _getMoreResource("GetDataItem");
             }
 
-            function _getMethodCustom(method) {
+            function _getMoreResource(filterBehavior) {
+
+                
 
                 ShowLoading();
 
                 self.LastAction = "get";
-                self.Url = makeGetCustomMethodBaseUrl(method);
+                self.UriResource.setEndPoint(self.EndPoint)
+                self.Url = makeGetMoreResourceBaseUrl(filterBehavior);
+
+                console.log('Url: ' + self.Url);
 
                 if (isOffline())
                     return LoadFromCache();
@@ -129,66 +144,50 @@
                 return JSON.stringify(self.Data);
             }
 
-            function queryStringFilter() {
-
-                if (self.Filter.Id !== undefined)
-                    return self.Filter.Id;
-
-                if (self.Filter.OrderFields !== undefined) {
-                    self.Filter.IsOrderByDynamic = true;
-                    if (self.Filter.OrderByType === undefined)
-                        self.Filter.OrderByType = 1;
-                }
-
-                return String.format("?{0}", $httpParamSerializer(angular.merge({}, self.DefaultFilter, self.Filter)));
-            }
-
-            function makeGetBaseUrl() {
-                return String.format("{0}/{1}", makeUri(), queryStringFilter());
-            }
-
-            function makeGetCustomMethodBaseUrl(method) {
-                return String.format("{0}/{1}/{2}", makeUri(), method, queryStringFilter());
+            function makeGetMoreResourceBaseUrl(filterBehavior) {
+                return compatibilityConstants.MakeGetMoreResourceBaseUrlAPI(self.UriResource, self.Filter, filterBehavior);
             }
 
             function makeDeleteBaseUrl() {
-                return String.format("{0}/?{1}", makeUri(), $httpParamSerializer(self.Filter));
-            }
-
-            function makeUri() {
-                return String.format("{0}/{1}", makeEndPont(), self.Resourse)
-            }
-
-            function makeEndPont() {
-
-                if (!self.EndPoint)
-                    return endpoints.DEFAULT;
-
-                return endpoints[self.EndPoint];
+                return String.format("{0}/?{1}", self.UriResource.makeUri(), $httpParamSerializer(self.Filter));
             }
 
             function handleSuccess(response) {
                 HideLoading();
 
                 if (self.EnableLogs)
-                    $log.debug("sucesso na API >>", makeUri())
+                    $log.debug("sucesso na API >>", self.UriResource.makeUri())
 
                 AddCache(response.data);
 
+                console.log(response.data);
                 self.SuccessHandle(JsonParseService.exec(response.data));
             }
 
             function handleError(err) {
+
+                console.log(err);
+
                 HideLoading();
 
-                if (self.EnableLogs)
-                    $log.error("erro na API >>", makeUri())
+                if (err.data == null)
+                    return;
 
-                if (self.EnableErrorMessage)
-                    Notification.error({ message: err.data.Errors[0], title: 'Ops, ocorreu um erro!' })
+                if (self.EnableLogs)
+                    $log.error("erro na API >>", self.UriResource.makeUri())
+
+
+                if (self.EnableErrorMessage) {
+
+                    if (compatibilityConstants.GetErrorsAPI(err) != null)
+                        Notification.error({ message: compatibilityConstants.GetErrorsAPI(err)[0], title: 'Ops, ocorreu um erro!' })
+                }
 
                 if (err.status == 401)
                     $state.go(configsConstants.STATE_STATUSCODE_401);
+
+                if (err.status == 415)
+                    Notification.error({ message: err.statusText, title: 'Ops, ocorreu um erro!' })
 
                 self.ErrorHandle(JsonParseService.exec(err.data));
             }
@@ -221,8 +220,10 @@
                 if (self.Url == "")
                     return;
 
+                console.log("AddCache", data);
+
                 if (self.LastAction == "get") {
-                    if (data.Data != null || (data.DataList != null && data.DataList.length > 0)) {
+                    if (compatibilityConstants.GetData(data) != null || (compatibilityConstants.GetDataList(data) != null && compatibilityConstants.GetDataList(data).length > 0)) {
                         data = JSON.stringify(data);
                         Cache.Add(self.Url, data)
                     }
@@ -237,7 +238,7 @@
                 HideLoading();
 
                 if (self.EnableLogs)
-                    $log.debug("sucesso na API (by Cache) >>", makeUri())
+                    $log.debug("sucesso na API (by Cache) >>", self.UriResource.makeUri())
 
                 var data = Cache.Get(self.Url);
                 data = JSON.parse(data);

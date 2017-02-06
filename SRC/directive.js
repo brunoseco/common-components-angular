@@ -15,18 +15,19 @@
             };
         })
 
-        .directive('makeSelect', ['Api', function (Api) {
+        .directive('makeSelect', ['Api','compatibilityConstants', function (Api,compatibilityConstants) {
             return {
                 replace: true,
                 template: function (elem, attr) {
 
-                    if (!attr.label)
-                        attr.label = "Todas";
+                    var _label = "";
+                    if (attr.label)
+                        _label = '<option value="">' + attr.label + '</option> ';
 
                     return '<select class="form-control" ' +
                                 'ng-model="' + attr.model + '" ' +
-                                'ng-options="item.Id as item.Name for item in vm.DataItem' + attr.dataitem + '">' +
-                                '<option value="">' + attr.label + '</option> ' +
+                                'ng-options="' + compatibilityConstants.GetDataItemFieldsAPI() + ' for item in vm.DataItem' + attr.dataitem + '">' +
+                                _label +
                            '</select>';
                 },
                 link: function (scope, element, attr) {
@@ -35,15 +36,35 @@
                     api.EnableLoading = false;
                     api.Filter.IsPaginate = false;
                     api.SuccessHandle = function (data) {
-                        for (var i = 0; i < data.DataList.length; i++)
-                            data.DataList[i].Id = parseInt(data.DataList[i].Id);
-                        scope.vm["DataItem" + attr.dataitem] = data.DataList;
-
+                        compatibilityConstants.GetDataItemsAPI(scope,attr, data);
                     };
                     api.DataItem();
                 }
             };
         }])
+
+        .directive('makeLabelInstance', ['Api', 'compatibilityConstants', function (Api, compatibilityConstants) {
+            return {
+                replace: true,
+                template: function (elem, attr) {
+                    return '<ul ng-repeat="item in vm.DataItem' + attr.dataitem + '| filter:' + attr.model + '"><li>{{item.name + item.Name}}</li></ul>';
+
+                },
+                link: function (scope, element, attr) {
+                    var api = new Api.resourse(attr.dataitem);
+                    api.EnableLogs = false;
+                    api.EnableLoading = false;
+                    api.Filter.IsPaginate = false;
+                    api.SuccessHandle = function (data) {
+                        compatibilityConstants.GetDataItemsAPI(scope, attr, data);
+                    };
+                    api.DataItem();
+                }
+            };
+        }])
+
+
+
 
         .directive('makeDatepicker', ['$filter', function ($filter) {
             return {
@@ -55,7 +76,6 @@
                                 'class="form-control" ' +
                                 'is-open="' + identify + '" ' +
                                 'ng-click="' + identify + ' = !' + identify + '" ' +
-                                'readonly ' +
                                 'uib-datepicker-popup="dd/MM/yyyy" ' +
                                 'ng-model="' + attr.model + '" ' +
                                 'placeholder="__/__/_____" ' +
@@ -63,8 +83,6 @@
                                 'datepicker-options="{ language: \'pt\' }" ' +
                                 'current-text="Hoje" ' +
                                 'clear-text="Limpar" ' +
-                                'ng-required="true" ' +
-                                'ui-mask="__/__/____" ' +
                             '/>'
                 },
                 link: function (scope, element, attrs, ctrl) {
@@ -78,6 +96,8 @@
             };
         }])
 
+
+
         .directive('bindCustomValue', function () {
             return {
                 restrict: 'A',
@@ -89,27 +109,37 @@
 
                     if (attr.bindCustomType) {
 
-                        if (attr.bindCustomType == "date")
+                        if (attr.bindCustomType === "date" || attr.bindCustomType === "DateTime" || attr.bindCustomType === "DateTime?")
                         { format = " | date:'dd/MM/yyyy' "; }
 
-                        if (attr.bindCustomType == "money")
+                        if (attr.bindCustomType === "datetimeComplete")
+                        { format = " | date:'dd/MM/yyyy HH:mm' "; }
+
+                        if (attr.bindCustomType === "money")
                         { format = " | currency "; attr.bindIfNull = "0" }
 
-                        if (attr.bindCustomType == "integer")
+                        if (attr.bindCustomType === "integer")
                         { format = " | number:0 "; attr.bindIfNull = "0" }
 
-                        if (attr.bindCustomType == "decimal")
+                        if (attr.bindCustomType === "decimal")
                         { format = " | number:2 "; attr.bindIfNull = "0" }
 
-                        if (attr.bindCustomType == "percent")
+                        if (attr.bindCustomType === "percent")
                         { format = " | number:2 "; attr.bindIfNull = "0"; attr.bindCustomAfter = "% " + (attr.bindCustomAfter || ""); whiteSpaceAfter = false; }
 
                     }
+
 
                     var html = (attr.bindCustomBefore ? attr.bindCustomBefore : "") + (whiteSpaceBefore ? ' ' : '') + // before content
                         '{{ ' + attr.bindCustomValue + ' || "' + (attr.bindIfNull || "--") + '"' + format + ' }}' + // the content
                         (whiteSpaceAfter ? ' ' : '') + (attr.bindCustomAfter ? attr.bindCustomAfter : "") +
                         (attr.bindContentAfter !== undefined ? elem.html() : ""); // after content
+
+                    if (attr.bindCustomType === "bool")
+                        html = "<span class='label label-danger' ng-if='!" + attr.bindCustomValue + "'>Não</span><span class='label label-success' ng-if='" + attr.bindCustomValue + "'>Sim</span>"
+
+                    if (attr.bindCustomType === "propertyInstance")
+                        html = "<make-label-Instance model='vm.Model." + attr.bindPropertyName + "' dataitem='" + attr.bindReletedClass + "'></make-label-Instance>";
 
                     elem.html(html)
 
@@ -134,5 +164,23 @@
                     }
                 }
             };
-        });
+        })
+
+        .directive('attributesC', ['$injector', function ($injector) {
+            return {
+                replace: true,
+                template: function (elem, attr) {
+
+                    var _attributes_field = attr.attributesField;
+                    var _attributes_container = attr.attributesContainer;
+                    var directive = "";
+
+                    var _container = $injector.get(_attributes_container + "Constants");
+                    directive = _container.Attributes[_attributes_field];
+                    return "<input " + directive + "\>";
+                },
+            };
+        }]);
+
+       
 })();

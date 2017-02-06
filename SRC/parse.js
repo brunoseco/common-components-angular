@@ -11,13 +11,20 @@
         var hashOfObjects = {};
 
         var service = {
-            exec: exec
+            exec: function (obj) {
+                return obj;
+            }
         };
 
         return service;
 
         function collectIds(obj) {
+
+            if (obj == null)
+                return;
+
             if (typeof obj === "object") {
+
                 if (obj.hasOwnProperty("$id")) {
                     hashOfObjects[obj.$id] = obj;
                 }
@@ -32,6 +39,11 @@
         }
 
         function setReferences(obj) {
+
+            if (obj == null)
+                return;
+            console.log("aqui", obj, typeof obj, typeof obj === "object");
+
             if (typeof obj === "object") {
                 for (var prop in obj) {
                     if (typeof obj[prop] === "object" &&
@@ -89,9 +101,11 @@
         }
 
         function exec(obj, depth) {
+
             var newObj = obj;
 
             hashOfObjects = {};
+
             collectIds(newObj);
             setReferences(newObj);
 

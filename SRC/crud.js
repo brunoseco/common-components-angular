@@ -4,15 +4,15 @@
     angular.module('common.utils')
         .service('Crud', Crud);
 
-    Crud.$inject = ['Api', '$uibModal'];
+    Crud.$inject = ['Api', '$uibModal', '$location', 'compatibilityConstants'];
 
-    function Crud(Api, $uibModal) {
+    function Crud(Api, $uibModal, $location, compatibilityConstants) {
 
         var init = function () {
 
             this.default = {
                 resource: null,
-                endPoint: "BI",
+                endPoint: "DEFAULT",
                 Filter: {
                     QueryOptimizerBehavior: null,
                     OrderFields: null,
@@ -23,17 +23,30 @@
                     message: "Registro criado com sucesso!",
                     pathModal: null,
                     sizeModal: null,
+                    urlRedirect: null
                 },
                 Edit: {
                     message: "Registro alterado com sucesso!",
                     pathModal: null,
                     sizeModal: null,
                     onAfterRenderEdit: function (model) { return model; },
+                    urlRedirect: null
+                },
+                Details: {
+                    pathModal: null,
+                    sizeModal: null,
+                    onAfterRenderDetails: function (model) { return model; },
                 },
                 Delete: {
                     message: "Registro excluir com sucesso!",
                     confirm: "Tem certeza que deseja excluir este registro?",
                     pathModal: "view/shared/_exclusao.modal.html",
+                },
+                Execute: {
+                    message: "Operação realizada com sucesso!",
+                    confirm: "Tem certeza que deseja realizar essa operação?",
+                    pathModal: "view/shared/_execute.modal.html",
+                    urlRedirect: null
                 },
                 ChangeDataPost: function (model) {
                     return model;
@@ -45,6 +58,12 @@
             this.LastFilters = {};
             this.Delete = _delete;
             this.Edit = _edit;
+            this.EditByFilter = _editByFilter;
+            this.ConfigInPage = _configInPage;
+            this.Details = _details;
+            this.DetailsByFilter  = _detailsByFilter;
+            this.Execute = _execute;
+            this.ExecuteWithOutConfirmation = _executeWithOutConfirmation;
             this.Create = _create;
             this.GetConfigs = _getConfigs;
             this.SetViewModel = _setViewModel;
@@ -70,6 +89,7 @@
             }
 
             function _filter(filters) {
+
                 self.LastFilters = filters || {};
                 self.LastFilters.PageIndex = 1;
 
@@ -81,6 +101,7 @@
 
             function _load(filters) {
 
+
                 self.ApiResource = new Api.resourse(self.GetConfigs().resource);
                 self.ApiResource.Filter = filters || {};
 
@@ -90,8 +111,7 @@
                 self.ApiResource.Filter.QueryOptimizerBehavior = self.GetConfigs().Filter.QueryOptimizerBehavior;
 
                 self.ApiResource.SuccessHandle = function (data) {
-                    self.ViewModel.FilterResult = data.DataList;
-                    self.Pagination.TotalItens = data.Summary.Total;
+                    compatibilityConstants.SuccessHandleAPI(data,self);
                 };
 
                 self.ApiResource.EndPoint = self.GetConfigs().endPoint;
@@ -124,6 +144,7 @@
             };
 
             function _edit(id) {
+
                 self.ApiResource = new Api.resourse(self.GetConfigs().resource);
                 self.ApiResource.Filter.Id = id;
 
@@ -137,21 +158,205 @@
                     var modalInstance = $uibModal.open({
                         animation: true,
                         templateUrl: self.GetConfigs().Edit.pathModal + "?v=" + _randomNum(),
-                        controller: ExecuteEditCreateNow,
+                        controller: ExecuteEditCreateNowModal,
                         size: self.GetConfigs().Edit.sizeModal,
                         controllerAs: 'vm',
                         resolve: {
+                            labels: function () {
+                                return self.GetConfigs().Labels;
+                            },
+                            attributes: function () {
+                                return self.GetConfigs().Attributes;
+                            },
                             model: function () {
-                                return data.Data;
+                                return compatibilityConstants.GetDataAPI(data);
                             }
                         }
                     });
 
-                    self.GetConfigs().Edit.onAfterRenderEdit(data.Data);
+                    self.GetConfigs().Edit.onAfterRenderEdit(compatibilityConstants.GetDataAPI(data));
                 };
 
                 self.ApiResource.EndPoint = self.GetConfigs().endPoint;
                 self.ApiResource.Get();
+            };
+
+            function _editByFilter(filter) {
+                
+                console.log('EditByFilter', filter);
+
+                self.ApiResource = new Api.resourse(self.GetConfigs().resource);
+                self.ApiResource.Filter = filter;
+
+                self.ApiResource.SuccessHandle = function (data) {
+
+                    if (self.GetConfigs().Edit.pathModal == null)
+                        throw "caminho do html do modal não enviado";
+
+                    self.LastAction = "edit";
+
+                    var modalInstance = $uibModal.open({
+                        animation: true,
+                        templateUrl: self.GetConfigs().Edit.pathModal + "?v=" + _randomNum(),
+                        controller: ExecuteEditCreateNowModal,
+                        size: self.GetConfigs().Edit.sizeModal,
+                        controllerAs: 'vm',
+                        resolve: {
+                            labels: function () {
+                                return self.GetConfigs().Labels;
+                            },
+                            attributes: function () {
+                                return self.GetConfigs().Attributes;
+                            },
+                            model: function () {
+                                return compatibilityConstants.GetDataListAPI(data)[0];
+                            }
+                        }
+                    });
+
+                    self.GetConfigs().Edit.onAfterRenderEdit(compatibilityConstants.GetDataListAPI(data)[0]);
+                };
+
+                self.ApiResource.EndPoint = self.GetConfigs().endPoint;
+                self.ApiResource.Get();
+            };
+
+            function _configInPage($stateParams, vm, Notification) {
+
+                self.ApiResource = new Api.resourse(self.GetConfigs().resource);
+                self.ApiResource.Filter.Id = $stateParams.Id;
+
+                self.ApiResource.SuccessHandle = function (data) {
+
+                    vm.Model = compatibilityConstants.GetDataAPI(data);
+                    self.GetConfigs().Edit.onAfterRenderEdit(compatibilityConstants.GetDataAPI(data));
+
+                    ExecuteEditCreateNow(vm, Notification, function () {
+
+                        if (self.GetConfigs().Edit.urlRedirect != null)
+                            $location.path(self.GetConfigs().Edit.urlRedirect)
+
+                        if (self.GetConfigs().Create.urlRedirect != null)
+                            $location.path(self.GetConfigs().Create.urlRedirect)
+
+                    });
+
+                };
+
+                self.ApiResource.EndPoint = self.GetConfigs().endPoint;
+                self.ApiResource.Get();
+            };
+
+            function _details(id) {
+
+                self.ApiResource = new Api.resourse(self.GetConfigs().resource);
+                self.ApiResource.Filter.Id = id;
+
+                self.ApiResource.SuccessHandle = function (data) {
+
+                    if (self.GetConfigs().Details.pathModal == null)
+                        throw "caminho do html do modal não enviado";
+
+                    self.LastAction = "details";
+
+                    var modalInstance = $uibModal.open({
+                        animation: true,
+                        controller: ExecuteDetailsNow,
+                        templateUrl: self.GetConfigs().Details.pathModal + "?v=" + _randomNum(),
+                        size: self.GetConfigs().Details.sizeModal,
+                        controllerAs: 'vm',
+                        resolve: {
+                            labels: function () {
+                                return self.GetConfigs().Labels;
+                            },
+                            attributes: function () {
+                                return self.GetConfigs().Attributes;
+                            },
+                            model: function () {
+                                return compatibilityConstants.GetDataAPI(data);
+                            }
+                        }
+                    });
+
+                    self.GetConfigs().Details.onAfterRenderDetails(compatibilityConstants.GetDataAPI(data));
+
+
+
+                };
+
+                self.ApiResource.EndPoint = self.GetConfigs().endPoint;
+                self.ApiResource.Get();
+            };
+
+            function _detailsByFilter(filter) {
+
+                self.ApiResource = new Api.resourse(self.GetConfigs().resource);
+                self.ApiResource.Filter = filter;
+
+                self.ApiResource.SuccessHandle = function (data) {
+
+                    if (self.GetConfigs().Details.pathModal == null)
+                        throw "caminho do html do modal não enviado";
+
+                    self.LastAction = "details";
+
+                    var modalInstance = $uibModal.open({
+                        animation: true,
+                        controller: ExecuteDetailsNow,
+                        templateUrl: self.GetConfigs().Details.pathModal + "?v=" + _randomNum(),
+                        size: self.GetConfigs().Details.sizeModal,
+                        controllerAs: 'vm',
+                        resolve: {
+                            labels: function () {
+                                return self.GetConfigs().Labels;
+                            },
+                            attributes: function () {
+                                return self.GetConfigs().Attributes;
+                            },
+                            model: function () {
+                                return compatibilityConstants.GetDataListAPI(data)[0];
+                            }
+                        }
+                    });
+
+                    self.GetConfigs().Details.onAfterRenderDetails(compatibilityConstants.GetDataListAPI(data)[0]);
+
+
+
+                };
+
+                self.ApiResource.EndPoint = self.GetConfigs().endPoint;
+                self.ApiResource.Get();
+            };
+
+            function _executeWithOutConfirmation(model, notification, callback) {
+
+                self.LastAction = "execute";
+                ExecuteNowWithOutConfirmation(model, notification, callback);
+
+            };
+
+            function _execute(model, callback) {
+
+                if (self.GetConfigs().Execute.pathModal == null)
+                    throw "caminho do html do modal não enviado";
+
+                self.LastAction = "execute";
+
+                var modalInstance = $uibModal.open({
+                    animation: true,
+                    templateUrl: self.GetConfigs().Execute.pathModal + "?v=" + _randomNum(),
+                    controller: ExecuteNow,
+                    controllerAs: 'vm',
+                    resolve: {
+                        model: function () {
+                            return model;
+                        },
+                        callback: function () {
+                            return callback;
+                        },
+                    }
+                });
             };
 
             function _create() {
@@ -164,12 +369,19 @@
                 var modalInstance = $uibModal.open({
                     animation: true,
                     templateUrl: self.GetConfigs().Create.pathModal + "?v=" + _randomNum(),
-                    controller: ExecuteEditCreateNow,
+                    controller: ExecuteEditCreateNowModal,
                     size: self.GetConfigs().Create.sizeModal,
                     controllerAs: 'vm',
                     resolve: {
+                        labels: function () {
+                            return self.GetConfigs().Labels;
+                        },
+                        attributes: function () {
+                            return self.GetConfigs().Attributes;
+                        },
                         model: function () {
-                            return {};
+                            return {
+                            };
                         }
                     }
                 });
@@ -205,11 +417,29 @@
                 };
             };
 
-            var ExecuteEditCreateNow = function ($uibModalInstance, model, Notification) {
+            var ExecuteDetailsNow = function ($uibModalInstance, model, labels, attributes, Notification) {
+
                 var vm = this;
 
                 vm.Model = model;
-                vm.ActionTitle = self.LastAction == "create" ? "Cadastro" : "Edição";
+                vm.Labels = labels;
+                vm.Attributes = attributes;
+
+                vm.ActionTitle = "Detalhes";
+
+                vm.ok = function (model) {
+
+                };
+
+                vm.cancel = function () {
+                    $uibModalInstance.dismiss('cancel');
+                };
+
+
+            };
+
+            var ExecuteEditCreateNow = function (vm, Notification, actionEnd) {
+
                 vm.ok = function (model) {
 
                     var msg = self.LastAction == "create" ? self.GetConfigs().Create.message : self.GetConfigs().Edit.message;
@@ -221,7 +451,7 @@
 
                     self.ApiResource.SuccessHandle = function (data) {
                         Notification.success({ message: msg, title: "Sucesso" })
-                        $uibModalInstance.close();
+                        actionEnd();
                         _load(self.LastFilters);
                     };
 
@@ -230,8 +460,92 @@
                 };
 
                 vm.cancel = function () {
+                    actionEnd();
+                };
+            };
+
+            var ExecuteEditCreateNowModal = function ($uibModalInstance, model, labels, attributes, Notification) {
+
+                var vm = this;
+
+                vm.Model = model;
+                vm.Labels = labels;
+                vm.Attributes = attributes;
+           
+
+                vm.openCalendar = function (e, vm, index) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    vm[index] = true;
+                };
+
+
+                var subActionTitle = self.LastAction == "create" ? "Cadastro" : "Edição";
+                vm.ActionTitle = subActionTitle;
+                if (self.ViewModel != null)
+                    vm.ActionTitle = self.ViewModel.ActionTitle + " : " + subActionTitle;
+
+                ExecuteEditCreateNow(vm, Notification, function () {
+                    $uibModalInstance.dismiss('cancel');
+                });
+
+
+            };
+
+            var ExecuteNow = function ($uibModalInstance, model, Notification, callback) {
+
+                var vm = this;
+                vm.Model = model;
+
+                vm.MensagemConfirm = self.GetConfigs().Execute.confirm;
+
+                vm.ok = function () {
+
+                    self.ApiResource = new Api.resourse(self.GetConfigs().resource);
+
+                    model = self.GetConfigs().ChangeDataPost(model);
+                    self.ApiResource.Data = model;
+
+                    self.ApiResource.SuccessHandle = function (data) {
+
+                        Notification.success({ message: self.GetConfigs().Execute.message, title: "Sucesso" })
+
+                        if (callback != null)
+                            callback();
+
+                        $uibModalInstance.close();
+
+                    };
+
+                    self.ApiResource.EndPoint = self.GetConfigs().endPoint;
+                    self.ApiResource.Put();
+                };
+
+                vm.cancel = function () {
                     $uibModalInstance.dismiss('cancel');
                 };
+            };
+
+            var ExecuteNowWithOutConfirmation = function (model, Notification, callback) {
+
+
+                self.ApiResource = new Api.resourse(self.GetConfigs().resource);
+
+                model = self.GetConfigs().ChangeDataPost(model);
+                self.ApiResource.Data = model;
+
+                self.ApiResource.SuccessHandle = function (data) {
+
+                    Notification.success({ message: self.GetConfigs().Execute.message, title: "Sucesso" })
+
+                    if (callback != null)
+                        callback();
+                };
+
+                self.ApiResource.EndPoint = self.GetConfigs().endPoint;
+                self.ApiResource.Put();
+
+
             };
 
         }

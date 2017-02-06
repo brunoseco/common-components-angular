@@ -3,5 +3,4 @@
 
     angular
         .module('common.utils', ['ui-notification']);
-
 })();
